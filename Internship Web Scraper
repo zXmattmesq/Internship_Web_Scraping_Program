@@ -1,0 +1,269 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from urllib.parse import urlparse
+import csv
+
+##options.headless = True##  Uncomment this and it will not open a chrome window
+options = webdriver.ChromeOptions()
+options.add_argument('--ignore-ssl-errors')
+driver = webdriver.Chrome(options=options)
+driver.maximize_window()
+
+class StartUp:
+    def __init__(self):
+        self.email = "EMAIL"
+        self.papassword = "PASSWORD"
+        self.logDict = {##URLS TO LOG IN dictionary website : url##
+            "jooble" : "https://ca.jooble.org/auth/login/email",
+            "snagajob" : "https://login.snagajob.com/",
+            "linkedIn" : "https://www.linkedin.com/home",
+            "bebee" : "https://www.bebee.com/login",
+            "chegg" : "https://www.chegg.com/Auth/Login",
+            "karkidi" : "https://www.karkidi.com/User-Account",
+            "ziprecruter" : "https://www.ziprecruiter.com/authn/login?realm=candidates#intsrc=zr.fe.header_logged_out_homepage"
+        }
+    
+    #Add URL
+    def addURL(self, key, newURL):
+        self.logDict.update({key:newURL})
+    
+    #Returns URL from the dictionary
+    def getURL(self, key):
+        return self.logDict[key]
+        
+    
+    #Initializes and logs into all websites required
+    def startUp(self):
+        for key in self.logDict:
+            URL = self.logDict.get(key)
+            self.logIn(URL)
+
+    #Logs into websites
+    def logIn(self, URL):
+        #currently set up for linkedIn, might have trouble with other websites
+        driver.get(URL)
+        try:
+            email_field = driver.find_element(By.XPATH, "//input[@name='session_key']")
+            email_field.send_keys(self.email)
+            driver.implicitly_wait(1)
+            try:
+                sign_in_button = driver.find_element(By.XPATH, "//button[contains(normalize-space(), 'continue')]")
+                sign_in_button.click()
+            except:
+                pass
+            try:
+                sign_in_button = driver.find_element(By.XPATH, "//button[contains(normalize-space(), 'Continue')]")
+                sign_in_button.click()
+            except:
+                pass
+            
+            password_field = driver.find_element(By.XPATH, "//input[@name='session_password']")
+            password_field.send_keys(self.password)
+            try:
+                sign_in_button = driver.find_element(By.XPATH, "//button[contains(normalize-space(), 'Sign')]")
+                sign_in_button.click()
+            except:
+                try:
+                    sign_in_button = driver.find_element(By.XPATH, "//button[contains(normalize-space(), 'Log')]")
+                    sign_in_button.click()
+                except:
+                    pass
+            driver.implicitly_wait(1)
+        except:
+            print("could not log in")
+            return
+
+class Listings:
+    def __init__(self, URLDict, listing, title, company, location_website): 
+        self.URLDict = URLDict
+        self.listing = listing
+        self.title = title
+        self.company = company
+        self.location_website = location_website
+
+    #job_elements is the list containing all elements to iterate through
+
+    #Add URL
+    def addURL(self, key, newURL):
+        self.URLDict.update({key:newURL})
+    
+    #Returns URL from the dictionary
+    def getURL(self, key):
+        return self.URLDict.get(key)
+    
+    #Get All Internships
+    def getListings(self, URL):
+        driver.get(URL)
+        driver.implicitly_wait(1)
+        self.loadPage(self.listing)
+        return driver.find_elements(By.CLASS_NAME, self.listing)
+
+    #Load whole page
+    def loadPage(self, class_name, prediction = 1):
+        job_elements1 = driver.find_elements(By.CLASS_NAME, class_name)
+
+        if len(job_elements1) > 0:
+            jobs = job_elements1[-1]
+            jobs.location_once_scrolled_into_view
+            driver.implicitly_wait(1)
+            jobs.click()
+            driver.implicitly_wait(1)
+            if len(job_elements1) >= prediction:
+                return
+            else:
+                self.loadPage(class_name, prediction)
+        else:
+            print("Elements out of range")
+
+    #Iterates through listings and finds the basic information displayed on all the listings: Job title, Company name....
+    def getInfo(self, job_elements):
+        job_list = []
+        results = []
+        for jobs in job_elements:
+            jobs.location_once_scrolled_into_view
+            titletxt = jobs.find_element(By.CLASS_NAME, self.title)
+            job_list.append(titletxt.text)
+            companytxt = jobs.find_element(By.CLASS_NAME, self.company)
+            job_list.append(companytxt.text)
+            location_websitetxt = jobs.find_elements(By.CLASS_NAME, self.location_website)
+            for index in location_websitetxt:
+                    job_list.append(index.text)
+            results.append(job_list)
+            job_list = []
+        return(results)
+
+    #Iterates through listings and clicks on the job title, that takes them to a second part of the screen that hass the apply link    
+    def getLinks(self, job_elements): 
+        list_of_links = []
+        for jobs in job_elements:
+            jobs.location_once_scrolled_into_view
+            jobs.click()
+            driver.implicitly_wait(1)
+            get_link = driver.find_element(By.PARTIAL_LINK_TEXT, "Apply")
+            link_apply = get_link.get_attribute("href")
+            list_of_links.append(link_apply)
+        return(list_of_links)
+
+    #Stores Links in text file
+    def storeLinks(self, list_store):
+        with open("LinksTextFile.csv", "a") as f:
+                f.write("#############################################################################################")
+        for items in list_store:
+            item = str(items)
+            with open("LinksTextFile.csv", "a") as f:
+                f.write("\n")
+                f.write(item)
+                f.write("\n")
+
+    #stores Listings in text file
+    def storeInfo(self, list_store):
+        with open("Info.csv", "a") as f:
+                f.write("#############################################################################################")
+        with open("Info.csv", "a") as f:
+            for index in list_store:
+                f.write("\n")
+                for i in index:
+                    i = str(i)
+                    f.write(i)
+                    f.write("\n")
+                    f.write("\t")
+
+    #Parse domain
+    def getDomainName(self, link):
+        parsed_url = urlparse(link)
+        domain_name = parsed_url.netloc
+        return domain_name
+
+class GoogleListings(Listings):
+    #Extends Listings class and initializes it with google values
+    def __init__(self): 
+        self.URLDict = {
+            "Data_Science" : "https://www.google.com/search?q=undergrad+data+science+internships&ibp=htl;jobs&sa=X&ved=2ahUKEwjX2rC17KyBAxUWE1kFHfc2DKIQutcGKAF6BAgUEAY#htivrt=jobs&fpstate=tldetail&htichips=job_family_1:undergraduate,requirements:years3under,employment_type:INTERN&htischips=job_family_1;undergraduate,requirements;years3under,employment_type;INTERN&htilrad=-1.0&htitab=&htidocid=2Zq_tGY2KGvgIZgCAAAAAA%3D%3D%22",
+            "Computer_Science" : "https://www.google.com/search?q=undergrad+computer+science+internships&ibp=htl;jobs&sa=X&ved=2ahUKEwjX2rC17KyBAxUWE1kFHfc2DKIQutcGKAF6BAgUEAY#fpstate=tldetail&htivrt=jobs&htilrad=-1.0&htichips=requirements:years3under,employment_type:INTERN,job_family_1:undergraduate&htischips=requirements;years3under,employment_type;INTERN,job_family_1;undergraduate&htidocid=_HZpf-uSRAo7hmkAAAAAAA%3D%3D",
+            "Software_Engineer": "https://www.google.com/search?q=undergrad+software+engineer+internships&ibp=htl;jobs&sa=X&ved=2ahUKEwjX2rC17KyBAxUWE1kFHfc2DKIQutcGKAF6BAgUEAY#fpstate=tldetail&htivrt=jobs&htilrad=-1.0&htichips=requirements:years3under,employment_type:INTERN,job_family_1:undergraduate&htischips=requirements;years3under,employment_type;INTERN,job_family_1;undergraduate&htidocid=L-uHqqLpPRgXjBUjAAAAAA%3D%3D",
+        }
+        self.listing = "iFjolb"
+        self.title = "BjJfJf"
+        self.company = "vNEEBe"
+        self.location_website = "Qk80Jf"
+
+class LinkedInListings(Listings):
+    #Extends Listings class and initializes it with linkedIn values
+    def __init__(self):
+        self.URLDict = {
+            "Data_Science" : "https://www.linkedin.com/jobs/search/?currentJobId=3705793649&f_E=1&geoId=103644278&keywords=data%20science&location=United%20States&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true",
+            "Computer_Science" : "https://www.linkedin.com/jobs/search/?currentJobId=3705793649&f_E=1&geoId=103644278&keywords=computer%20science&location=United%20States&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true",
+            "Software_Engineer": "https://www.linkedin.com/jobs/search/?currentJobId=3725437354&f_E=1&geoId=103644278&keywords=software%20engineer&location=United%20States&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true",
+        }
+
+        #The IDs for listing, title, company and website are different if you use linked in with an account or not. This is set up for an account
+        self.listing = "job-card-list__entity-lockup"
+        self.title = "disabled"
+        self.company = "artdeco-entity-lockup__subtitle"
+        self.location_website = "job-card-container__metadata-item"
+    
+    #Iterates through listings and finds the basic information displayed on all the listings: Job title, Company name....
+    def getInfo(self, job_elements):
+        job_list = []
+        results = []
+        for jobs in job_elements:
+            jobs.location_once_scrolled_into_view
+            titletxt = jobs.find_element(By.CLASS_NAME, self.title)
+            job_list.append(titletxt.text)
+            companytxt = jobs.find_element(By.CLASS_NAME, self.company)
+            job_list.append(companytxt.text)
+            location_websitetxt = jobs.find_element(By.CLASS_NAME, self.location_website)
+            job_list.append(location_websitetxt.text)
+            results.append(job_list)
+            job_list = []
+        return(results)
+    
+    #Finds job listings and clicks the auto apply button (WIP)
+    def getEasyApply(self, job_elements): 
+        def iterate_jobs(self):
+            for jobs in job_elements:
+                jobs.location_once_scrolled_into_view
+                jobs.click()
+                driver.implicitly_wait(1)
+                get_easy = driver.find_element(By.CLASS_NAME, "jobs-apply-button")
+                get_easy.click()
+                driver.implicitly_wait(1)
+                for i in range(6):
+                    self.spamNext()
+        iterate_jobs()
+        page_next = driver.find_elements(By.CLASS_NAME, "artdeco-pagination__indicator")
+        for index in page_next:
+            index.click()
+            iterate_jobs()
+
+    #Clicks the next button to easy apply (WIP)
+    def spamNext(self):
+        try:
+            get_easy = driver.find_element(By.CLASS_NAME, "artdeco-button")
+            get_easy.location_once_scrolled_into_view
+            get_easy.click()
+        except:
+            get_easy = driver.find_element(By.CLASS_NAME, "artdeco-modal__dismiss")
+            get_easy.location_once_scrolled_into_view
+            get_easy.click()
+            driver.implicitly_wait(1)
+            get_easy = driver.find_element(By.CLASS_NAME,"artdeco-modal__confirm-dialog-btn")
+            get_easy.click()
+
+def main():
+    start = StartUp()
+    linkedInURL = start.getURL("linkedIn")
+    start.logIn(linkedInURL)
+
+    linked_In = LinkedInListings()
+    URL1 = linked_In.getURL("Data_Science")
+    linked_In.getListings(URL1)
+    storeme1 = linked_In.getInfo()
+    linked_In.storeInfo(storeme1)
+
+    google = GoogleListings()
+    URL2 = google.getURL("Software_Engineer")
+    listings = google.getListings(URL2)
+    storeme2 = google.getLinks(listings)
+    google.storeLinks(storeme2)
+main()
